@@ -1,0 +1,415 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | Expense Tracker
+{% endblock %}
+
+{% block head_extra %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block extra_header %}
+  <!-- Logout button -->
+  <a href="{{ url_for('logout') }}"
+  class="rounded-xl bg-rose-500/20 hover:bg-rose-500/30
+          border border-rose-500/40 px-4 py-2 text-rose-300
+          text-sm font-medium transition">
+  Logout
+  </a>
+{% endblock %}
+
+
+{% block content %}
+<h1 class="text-3xl font-semibold mb-2">Dashboard</h1>
+<p class="text-slate-400 mb-6">
+  Track spending, filter by date/category, and visualize instantly.
+</p>
+
+<!-- Flash messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="mb-4 space-y-2">
+      {% for categ, message in messages %}
+        <div class="rounded-xl border px-4 py-2 text-sm
+          {% if categ == 'success' %} border-emerald-500/40 bg-emerald-500/10 text-emerald-300
+          {% elif categ == 'error' %} border-rose-500/40 bg-rose-500/10 text-rose-300
+          {% else %} border-slate-700 bg-slate-800 text-slate-300 {% endif %}">
+          {{ message }}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<!-- Filters + Add Expense -->
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+  <section class="lg:col-span-2 rounded-2xl border border-slate-800 bg-slate-900 p-4 mb-6">
+    <h2 class="text-lg font-semibold mb-3">Filters</h2>
+
+    <form method="get" action="{{ url_for('index') }}" class="grid grid-cols-1 md:grid-cols-5 gap-3 items-end pr-5">
+      <label class="text-sm">
+        <span class="block mb-1 text-slate-300">Start</span>
+        <input name="start" value="{{ start_str or '' }}" type="date"
+          class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100" />
+      </label>
+      <label class="text-sm">
+        <span class="block mb-1 text-slate-300">End</span>
+        <input name="end" value="{{ end_str or '' }}" type="date"
+          class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100" />
+      </label>
+      <label class="text-sm md:col-span-2">
+        <span class="block mb-1 text-slate-300">Category</span>
+        <select name="category"
+          class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100">
+          <option value="">ALL</option>
+          {% for categ in categories %}
+            <option value="{{ categ }}" {% if request.args.get('category') == categ %}selected{% endif %}>
+              {{ categ }}
+            </option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="flex gap-2">
+        <button type="submit"
+          class="rounded-xl bg-brand/20 hover:bg-brand/30 text-brand px-4 py-2 border border-brand/30">
+          Apply
+        </button>
+        <a href="{{ url_for('index') }}"
+          class="rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2 border border-slate-700">
+          Reset
+        </a>
+      </div>
+    </form>
+
+    <div class="mt-4 text-sm text-slate-300">
+      <span class="mr-2">Total:</span>
+      <span class="inline-block rounded-xl border border-slate-700 bg-slate-800 px-3 py-1 font-semibold">
+        ${{ "%.2f"|format(total_expenses) }}
+      </span>
+    </div>
+
+    <div class="mt-3">
+      <a href="{{ url_for('export_csv', start=start_str, end=end_str, category=category) }}"
+        class="text-xs text-slate-400 hover:text-brand underline">
+        Export CSV (current filter)
+      </a>
+    </div>
+
+    <div class="flex justify-between items-center mb-6 pt-6">
+      <!-- Add Expense button -->
+      <button id="openModal"
+              class="rounded-xl bg-brand/20 hover:bg-brand/30 
+                    border border-brand/30 text-brand px-4 py-2 
+                    text-sm font-medium transition">
+        + Add Expense
+      </button>
+    </div>
+
+  </section>
+</div>
+
+<!-- Modal -->
+<div id="addModal" class="hidden fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50">
+  <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md">
+    <h2 class="text-xl font-semibold mb-4">Add Expense</h2>
+    <form method="post" action="{{ url_for('add') }}" class="space-y-3">
+      <label class="block text-sm">
+        <span class="mb-1 block text-slate-300">Description</span>
+        <input name="description"
+          class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100" />
+      </label>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block text-sm">
+          <span class="mb-1 block text-slate-300">Amount</span>
+          <input name="amount" type="number" step="0.01" min="0.01"
+            class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100" />
+        </label>
+        <label class="block text-sm">
+          <span class="mb-1 block text-slate-300">Date</span>
+          <input value="{{ date_today }}" name="date" type="date"
+            class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100" />
+        </label>
+      </div>
+      <label class="block text-sm">
+        <span class="mb-1 block text-slate-300">Category</span>
+        <select name="category"
+          class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100">
+          {% for categ in categories %}
+          <option value="{{ categ }}">{{ categ }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="flex gap-2 mt-4">
+        <button class="w-full bg-brand/20 hover:bg-brand/30 text-brand px-4 py-2 border border-brand/30 rounded-xl"
+          type="submit">Add</button>
+        <button id="closeModal" type="button"
+          class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl border border-slate-700">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  const modal = document.getElementById('addModal');
+  const openBtn = document.getElementById('openModal');
+  const closeBtn = document.getElementById('closeModal');
+  openBtn.addEventListener('click', () => modal.classList.remove('hidden'));
+  closeBtn.addEventListener('click', () => modal.classList.add('hidden'));
+</script>
+
+
+<div class="flex flex-col items-center mt-8 w-full">
+  
+  <!-- Segmented Control -->
+  <div id="viewSwitcher"
+       class="inline-flex rounded-xl border border-slate-700 bg-slate-800/60 text-sm font-medium overflow-hidden mb-8 shadow-lg">
+    <button id="btnTable"
+            style="white-space: nowrap"
+            data-view="table"
+            class="px-6 py-3 flex-1 text-center transition focus:outline-none text-lg {% if view == 'table' %}bg-brand/20 text-brand{% endif %}">
+        📋 Table
+    </button>
+    <button id="btnPie"
+            data-view="pie"
+            class="px-6 py-3 flex-1 text-center transition focus:outline-none text-lg {% if view == 'pie' %}bg-brand/20 text-brand{% endif %}">
+        🥧 Pie
+    </button>
+    <button id="btnBar"
+            data-view="bar"
+            style="white-space: nowrap"
+            class="px-6 py-3 flex-1 text-center transition focus:outline-none text-lg {% if view == 'bar' %}bg-brand/20 text-brand{% endif %}">
+        📈 Monthly
+    </button>
+  </div>
+  
+  <style>
+    #viewSwitcher button {
+      @apply border-r border-slate-700 text-slate-300;
+    }
+    #viewSwitcher button:last-child {
+      @apply border-r-0;
+    }
+    #viewSwitcher button.active {
+      @apply bg-brand/20 text-brand;
+    }
+  </style>
+  
+  <!-- Table -->
+  <section id="tableSection"
+    class="{% if view != 'table' %}hidden{% endif %} rounded-2xl border border-slate-800 bg-slate-900 mt-2 w-full max-w-7xl p-6 shadow-md">
+    <div class="px-4 py-3 border-b border-slate-800">
+      <h2 class="text-lg font-semibold">Expenses</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-sm">
+        <thead class="text-slate-300 bg-slate-800/50">
+          <tr>
+            <th class="text-left px-4 py-3">Date</th>
+            <th class="text-left px-4 py-3">Description</th>
+            <th class="text-left px-4 py-3">Category</th>
+            <th class="text-right px-4 py-3">Amount</th>
+            <th class="px-4 py-3"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if expenses %}
+          {% for e in expenses %}
+          <tr class="border-t border-slate-800 hover:bg-slate-800/30">
+            <td class="px-4 py-2">{{ e.created_date.strftime("%d-%m-%Y") if e.created_date else "" }}</td>
+            <td class="px-4 py-2">{{ e.description }}</td>
+            <td class="px-4 py-2">{{ e.category }}</td>
+            <td class="px-4 py-2 text-right">${{ "%.2f"|format(e.amount) }}</td>
+            <td class="px-4 py-2 text-right">
+              <div class="inline-flex gap-2">
+                <button type="button"
+                  class="text-sky-300 hover:text-sky-200 text-xs border border-sky-400/30 px-3 py-1 rounded-lg openEditModal"
+                  data-id="{{ e.id }}"
+                  data-description="{{ e.description }}"
+                  data-amount="{{ "%.2f"|format(e.amount) }}"
+                  data-category="{{ e.category }}"
+                  data-date="{{ e.created_date.strftime('%Y-%m-%d') if e.created_date else '' }}">
+                  Edit
+                </button>
+
+                <form method="post" action="{{ url_for('delete', expense_id=e.id) }}">
+                  <button
+                    class="text-rose-300 hover:text-rose-200 text-xs border border-rose-400/30 px-3 py-1 rounded-lg"
+                    type="submit">Delete</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+          {% else %}
+          <tr>
+            <td colspan="5" class="px-4 py-6 text-center text-slate-400">
+              No expenses yet — add your first one above.
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+    <!-- Pie Chart -->
+  <div id="pieSection" class="{% if view != 'pie' %}hidden{% endif %} rounded-2xl border border-slate-800 bg-slate-900 p-6 w-full max-w-3xl mt-2 shadow-md">
+    <h3 class="font-semibold mb-4 text-center text-xl">By Category</h3>
+    <canvas id="categChart" style="max-width: 600px; max-height: 400px;"></canvas>
+  </div>
+  
+  <!-- Bar Chart -->
+  <div id="barSection"
+      class="{% if view != 'bar' %}hidden{% endif %} rounded-2xl border border-slate-800 bg-slate-900 p-6 w-full max-w-6xl mt-2 shadow-md">
+    <h3 class="font-semibold mb-4 text-center text-xl">Spending Over Time</h3>
+    <canvas id="dayChart" height="80px"></canvas>
+  </div>
+
+
+<!-- Edit Modal -->
+<div id="editModal" class="hidden fixed inset-0 bg-black/40 backdrop-blur-md flex items-center justify-center z-50">
+  <div class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-md">
+    <h2 class="text-xl font-semibold mb-4">Edit Expense</h2>
+    <form id="editForm" method="post" class="space-y-3">
+      
+      <input type="hidden" name="expense_id" id="edit_id">
+
+      <label class="block text-sm">
+        <span class="mb-1 block text-slate-300">Description</span>
+        <input name="description" id="edit_description"
+          class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100" />
+      </label>
+
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block text-sm">
+          <span class="mb-1 block text-slate-300">Amount</span>
+          <input name="amount" id="edit_amount" type="number" step="0.01" min="0.01"
+            class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100" />
+        </label>
+        <label class="block text-sm">
+          <span class="mb-1 block text-slate-300">Date</span>
+          <input name="change_date" id="edit_date" type="date"
+            class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100" />
+        </label>
+      </div>
+
+      <label class="block text-sm">
+        <span class="mb-1 block text-slate-300">Category</span>
+        <select name="category" id="edit_category"
+          class="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-slate-100">
+          {% for categ in categories %}
+          <option value="{{ categ }}">{{ categ }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <div class="flex gap-2 mt-4">
+        <button class="w-full bg-brand/20 hover:bg-brand/30 text-brand px-4 py-2 border border-brand/30 rounded-xl"
+          type="submit">Save</button>
+        <button id="closeEditModal" type="button"
+          class="w-full bg-slate-800 hover:bg-slate-700 text-slate-300 px-4 py-2 rounded-xl border border-slate-700">
+          Cancel
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+
+
+<script>
+  document.querySelectorAll('#viewSwitcher button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const view = btn.dataset.view;
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', view);
+      window.location.href = url.toString();
+    });
+  });
+</script>
+
+
+<script>
+  const categLabels = {{ (categ_labels or []) | tojson }};
+  const categValues = {{ (categ_values or []) | tojson }};
+  const dayLabels = {{ (day_labels or []) | tojson }};
+  const dayValues = {{ (day_values or []) | tojson }};
+
+  if (document.getElementById('categChart')) {
+    const ctx1 = document.getElementById('categChart').getContext('2d');
+    new Chart(ctx1, {
+      type: "pie",
+      data: { labels: categLabels, datasets: [{ data: categValues }] },
+      options: { plugins: { legend: { labels: { color: '#cbd5e1' } } } }
+    });
+  }
+
+  if (document.getElementById('dayChart')) {
+    const ctx2 = document.getElementById('dayChart').getContext('2d');
+    new Chart(ctx2, {
+      type: "bar",
+      data: { labels: dayLabels, datasets: [{ label: 'Total', data: dayValues }] },
+      options: {
+        plugins: { legend: { labels: { color: '#cbd5e1' } } },
+        scales: {
+          x: { ticks: { color: '#cbd5e1' }, grid: { color: '#475569' } },
+          y: { ticks: { color: '#cbd5e1' }, grid: { color: '#475569' } }
+        }
+      }
+    });
+  }
+</script>
+
+<script>
+  document.querySelectorAll('#viewSwitcher button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const view = btn.dataset.view;
+      const url = new URL(window.location.href);
+      url.searchParams.set('view', view);
+      window.location.href = url.toString();
+    });
+  });
+</script>
+
+
+
+<script>
+  const editModal = document.getElementById('editModal');
+  const closeEditBtn = document.getElementById('closeEditModal');
+  const editForm = document.getElementById('editForm');
+
+  const editId = document.getElementById('edit_id');
+  const editDesc = document.getElementById('edit_description');
+  const editAmount = document.getElementById('edit_amount');
+  const editDate = document.getElementById('edit_date');
+  const editCategory = document.getElementById('edit_category');
+
+  document.querySelectorAll('.openEditModal').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const desc = btn.dataset.description;
+      const amount = btn.dataset.amount;
+      const category = btn.dataset.category;
+      const date = btn.dataset.date;
+
+      editId.value = id;
+      editDesc.value = desc;
+      editAmount.value = amount;
+      editDate.value = date;
+      editCategory.value = category;
+
+      // правильный action для формы
+      editForm.action = `/edit/${id}`;
+
+      editModal.classList.remove('hidden');
+    });
+  });
+
+  closeEditBtn.addEventListener('click', () => {
+    editModal.classList.add('hidden');
+  });
+</script>
+
+
+{% endblock %}
